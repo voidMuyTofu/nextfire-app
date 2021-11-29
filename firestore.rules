@@ -1,0 +1,115 @@
+rules_version = '2';
+service cloud.firestore {
+	match /databases/{database}/documents {
+  	match /{document=**}{
+    	//Requerido para conslutas de colecciones grupales (collection group queries)
+      match /posts/{postId}{
+      	allow read;
+      }
+      //Todo el mundo puede leer un usuario pero para crearlo
+      //tienes que ser un usuario valido
+      match /users/{userId}{
+      	allow read;
+        allow create: if isValidUser(userId);
+      }
+      //Lo mismo para el nombre de usuario
+      match /usernames/{username}{
+      	allow read;
+        allow create: if isValidUsername(username);
+      }
+      //Para el post se puede leer, se puede crear
+      //si el usuario puede crear posts, puede actualizar
+      //si el usuario es el dueño o si puede dar like, y
+      //se puede borrar si el user es dueño del post
+      match /users/{userId}/posts/{postId} {
+      	allow read;
+        allow create: if canCreatePost(userId);
+        allow update: if canUpdatePost(userId) || canIncrementHearts(userId, postId);
+        allow delete: if request.auth.uid == userId;
+      }
+      //Para los likes se pueden leer, se puede escribir
+      //si el usuario que hace la request es igual al que hay en la BBDD
+      match /users/{userId}/posts/{postId}/hearts/{heartId} {
+      	allow read;
+        allow write: if request.auth.uid == heartId;
+      }
+      
+      function isValidUser(userId){
+      	//El usuario es considerado dueño si el que hace la request
+        //es el mismo usuario que hay en el path
+      	let isOwner = request.auth.uid == userId;
+      	let username = request.resource.data.username;
+        //existAfter te permite utilizar un registro de la base de datos
+        //como si ya estuviese creado, y lo necesitamos aqui para asegurarnos
+        //para que el documento del nombre de usuario se crea a la vez que el de usuario
+        let createdValidUsername = existsAfter(/databases/$(database)/documents/usernames/$(username));
+        
+        return isOwner && createdValidUsername;
+      }
+      
+      function isValidUsername(username){
+      	//El usuario que hace la request es dueño del username
+      	let isOwner = request.auth.uid == request.resource.data.uid;
+        let isValidLength = username.size() >= 3 && username.size() <= 15;
+        //getAfter nos premite obtener el documento despues de que el batch de escritura haya acabado
+        let isValidUserDoc = getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.username == username;
+        
+        return isOwner && isValidLength && isValidUserDoc;
+      }
+      
+      function canCreatePost(userId){
+      	//Comprobamos que el usuario es dueño del documento
+      	let isOwner = request.auth.uid == userId;
+        //Comprobamos que el tiempo para que coincida el tiempo
+        //de la request con el timestamp de createdAt para que
+        //el usuario no pueda modificar la fecha de creacion
+        let isNow = request.time == request.resource.data.createdAt;
+        //El contenido es valido si tiene menos de 20000 caracteres y 
+        // que el contador de likes inicial sea 0
+        let isValidContent = request.resource.data.content.size() < 20000 && request.data.heartCount == 0;
+        //Obtenemos el nombre de usuario ya que está en otro documento
+        let username = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.username;
+        //Comprobamos que el nombre de usuario coincide con el de la request
+        let usernameMatches = username == request.resource.data.username;
+        
+        return isOwner && isNow && isValidContent && usernameMatches;
+      }
+      
+      function canUpdatePost(userId){
+      	let isOwner = request.auth.uid == userId;
+        let isNow = request.time == request.resource.data.updatedAt;
+        let isValidContent = request.resource.data.content.size() < 20000;
+        //Comprobamos que la request no intenta actualizar ni el uid, 
+        //username y heartCount
+        let doesNotUpdateForbidden = !request.resource.data.diff(resource.data).affectedKeys().hasAny(['uid', 'username', 'heartCount']);
+        
+        return isOwner && isNow && isValidContent && doesNotUpdateForbidden;
+      }
+      
+      function canIncrementHearts(userId, postId){
+      	//Comprobamos que en la request solo se actualiza el heartCount
+      	let hasValidFields = request.resource.data.diff(resource.data).affectedKeys().hasOnly(['heartCount']);
+        //Cogemos el valor del usuario que hace la request
+        let currentUser = request.auth.uid;
+        //Comprobamos si el documento existe despues de la request
+        let heartDocExistsAfter = existsAfter(/databases/$(database)/documents/users/$(userId)/posts/$(postId)/hearts/$(currentUser));
+        //Comprobamos si el documento existe cuando se hace la reques
+        let heartDocExists = exists(/databases/$(database)/users/$(userId)/posts/$(postId)/hearts/$(currentUser));
+        //Si se ha añadido un like el documento no existia antes pero despues
+        //de la request si existe
+        let heartDocAdded = !heartDocExists && heartDocExistsAfter;
+        //Si se ha eliminado un like el documento existia antes pero despues
+        //de la request no existe
+        let heartDocRemoved = heartDocExists && !heartDocExistsAfter;
+        //Calculamos cuanto han cambiado los like en la request
+        //restando los que vienen en la request con los que habia
+        let countChange = request.resource.data.heartCount - resource.data.heartCount;
+        //Solo es valido el cambio cuando la diferencia es 1 o -1
+        let validChange = countChange == 1 || countChange == -1;
+        
+        return hasValidFields && validChange && (countChange == 1 ? heartDocAdded : heartDocRemoved)
+      }
+      
+    }
+  }
+}

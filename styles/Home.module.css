@@ -1,11 +1,28 @@
 .container {
   min-height: 100vh;
   padding: 0 0.5rem;
+  margin-top: 10rem;
   display: flex;
+  min-width: 70vw;
   flex-direction: column;
   justify-content: center;
   align-items: center;
   height: 100vh;
+}
+
+.container2 {
+  min-height: 100vh;
+  padding: 0 0.5rem;
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+}
+
+.textarea {
+  width: 741px;
+  height: 305px;
 }
 
 .main {
@@ -118,4 +135,17 @@
     width: 100%;
     flex-direction: column;
   }
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+}
+
+.controls textarea {
+  height: 60vh;
+  border: none;
+  outline: none;
+  padding: 0.5rem;
+  font-size: 1.25rem;
 }

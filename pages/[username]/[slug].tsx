@@ -2,6 +2,9 @@ import { firestore, getUserWithUsername, postToJson } from "../../lib/firebase";
 import { useDocumentData } from "react-firebase-hooks/firestore";
 import styles from "../../styles/Home.module.css";
 import PostContent from "../../components/PostContent";
+import AuthCheck from "../../components/AuthCheck";
+import Heart from "../../components/HeartButton";
+import Link from "next/link";
 
 export async function getStaticProps({ params }) {
   const { username, slug } = params;
@@ -52,7 +55,19 @@ export default function PostPage(props) {
         <p>
           <strong>{post.heartCount || 0} 🤍</strong>
         </p>
+
+        <AuthCheck
+          fallback={
+            <Link href="/enter">
+              <button>💗 Inicia sesión</button>
+            </Link>
+          }
+        >
+          <Heart postRef={postRef} />
+        </AuthCheck>
       </aside>
     </main>
   );
 }
+//* Ponemos AuthCheck para mostrar el boton de
+//* like cuando se ha iniciado sesion
